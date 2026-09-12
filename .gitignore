@@ -1,3 +1,4 @@
+# ---- OS ----
 .DS_Store
 .DS_Store?
 ._*
@@ -6,33 +7,40 @@
 Icon
 Thumbs.db
 ehthumbs.db
-__pycache__/
-main
-server
-collector
-websocket
-venv/
-context/
-context*
-sqlite.db
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-node_modules
-dist
-dist-ssr
-*.local
+
+# ---- Editors ----
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
+.idea/
 *.sw?
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ---- Environments ----
+.venv/
+venv/
+.env
+.env.*
+
+# ---- Tooling caches ----
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---- gdeltx local state ----
+# Runtime cache lives in ~/.cache/gdeltx, but keep stray local copies out.
+.cache/
+*.log
+
+# ---- Working notes (intentionally untracked) ----
 notes/
