@@ -27,7 +27,7 @@ Homepage = "https://github.com/PeacexF/gdeltx"
 Repository = "https://github.com/PeacexF/gdeltx"
 
 [project.scripts]
-gdeltx = "gdeltx.cli:app"
+gdeltx = "gdeltx.cli:main"
 
 [dependency-groups]
 dev = [
