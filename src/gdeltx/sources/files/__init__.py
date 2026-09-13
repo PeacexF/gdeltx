@@ -4,6 +4,7 @@ from gdeltx.sources.files.readers import (
     plain_query,
     read_events,
     read_gkg,
+    read_matching_gkg,
     read_rows,
     row_mentions,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "plan",
     "read_events",
     "read_gkg",
+    "read_matching_gkg",
     "read_rows",
     "row_mentions",
     "slot_url",

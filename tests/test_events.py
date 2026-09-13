@@ -90,6 +90,22 @@ def test_exact_fields() -> None:
     assert event.raw is not None and event.raw["Actor1Code"] == "USAGOV"
 
 
+def test_captured_event_normalizes(fixtures_dir) -> None:
+    line = (fixtures_dir / "events_export.sample.tsv").read_text("utf-8").splitlines()[0]
+    parsed = parse_event(line)
+    assert parsed is not None
+    event = to_event(parsed, "q")
+    assert event is not None
+    assert event.global_event_id == "1322787616"
+    assert (event.actor_1, event.actor_1_country) == ("VICTORIA", "AUS")
+    assert (event.event_code, event.action) == ("036", "Express intent to meet or negotiate")
+    assert event.location == "Melbourne, Victoria, Australia"
+    # Geo country codes are FIPS: Australia is AS here, AUS in the actor columns.
+    assert event.location_country_code == "AS"
+    assert (event.latitude, event.longitude) == (-37.8167, 144.967)
+    assert event.source_domain == "abc.net.au"
+
+
 def test_unknown_code_keeps_the_raw_code_and_no_label() -> None:
     event = to_event(row(GLOBALEVENTID="1", EventCode="9999"), "q")
     assert event is not None

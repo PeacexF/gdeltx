@@ -3,6 +3,7 @@ from gdeltx.models.context import ContextSnippet
 from gdeltx.models.entity import Entity, EntityMention, EntityType
 from gdeltx.models.event import Event
 from gdeltx.models.result import Record, RequestMeta, Result
+from gdeltx.models.source import Source
 
 __all__ = [
     "Article",
@@ -14,4 +15,5 @@ __all__ = [
     "Record",
     "RequestMeta",
     "Result",
+    "Source",
 ]

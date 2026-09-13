@@ -18,8 +18,8 @@ from gdeltx.analysis.aggregate import EntityTally
 from gdeltx.console import Reporter
 from gdeltx.models import Entity, EntityMention, EntityType, RequestMeta
 from gdeltx.output import Format, write
-from gdeltx.parsers.gkg import MATCH_FIELDS, published_at, row_entities
-from gdeltx.sources.files import FileFetcher, FilePlan, contains_any, read_gkg, row_mentions
+from gdeltx.parsers.gkg import published_at, row_entities
+from gdeltx.sources.files import FileFetcher, FilePlan, read_matching_gkg
 from gdeltx.sources.files.readers import Row
 from gdeltx.timeparse import to_stamp
 
@@ -32,16 +32,6 @@ SECTIONS = (
 )
 NAME_WIDTH = 40
 EMPTY_MESSAGE = "No entities found."
-
-
-def matching_rows(
-    fetcher: FileFetcher, file_plan: FilePlan, term: str, reporter: Reporter
-) -> Iterator[Row]:
-    # The cheap line filter can match anywhere in the row (URLs, GCAM); the
-    # field check keeps only records that actually name the query.
-    for row in read_gkg(fetcher, file_plan, reporter=reporter, match=contains_any([term])):
-        if row_mentions(row, MATCH_FIELDS, term):
-            yield row
 
 
 def _domain(row: Row) -> str | None:
@@ -98,7 +88,7 @@ def write_sections(
         console.print(EMPTY_MESSAGE)
     elif footer:
         console.print()
-        console.print(Text(footer, style="dim"))
+        console.print(Text(footer, style="dim"), soft_wrap=True)
     return written
 
 
@@ -131,7 +121,7 @@ def run(
             **({} if mentions else {"top": top}),
         },
     )
-    rows = matching_rows(fetcher, file_plan, term, reporter)
+    rows = read_matching_gkg(fetcher, file_plan, term, reporter=reporter)
     try:
         if mentions:
             records = iter_mentions(rows, term, wanted, include_raw=include_raw)

@@ -8,8 +8,8 @@ from collections.abc import Callable, Iterable, Iterator
 from gdeltx.console import Reporter
 from gdeltx.errors import InputError
 from gdeltx.parsers.events import parse_event
-from gdeltx.parsers.gkg import parse_gkg
-from gdeltx.sources.files.fetch import FileFetcher, FilePlan
+from gdeltx.parsers.gkg import names_query, parse_gkg
+from gdeltx.sources.files.fetch import FileFetcher, FilePlan, contains_any
 
 Row = dict[str, str | None]
 
@@ -68,3 +68,17 @@ def read_events(fetcher: FileFetcher, file_plan: FilePlan, **kwargs) -> Iterator
 
 def read_gkg(fetcher: FileFetcher, file_plan: FilePlan, **kwargs) -> Iterator[Row]:
     return read_rows(fetcher, file_plan, parse_gkg, **kwargs)
+
+
+def read_matching_gkg(
+    fetcher: FileFetcher, file_plan: FilePlan, term: str, *, reporter: Reporter
+) -> Iterator[Row]:
+    # The line filter can hit anywhere in a row (URLs, GCAM); the field check
+    # keeps only records that actually name the query.
+    rows = read_gkg(fetcher, file_plan, reporter=reporter, match=contains_any([term]))
+    try:
+        for row in rows:
+            if names_query(row, term):
+                yield row
+    finally:
+        rows.close()

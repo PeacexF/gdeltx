@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, TextIO
+from typing import Any, Literal, TextIO
 
 from rich.console import Console
 from rich.table import Table
@@ -18,6 +18,9 @@ class Column:
     accessor: str | Callable[[Record], Any]
     width: int | None = None
     no_wrap: bool = False
+    justify: Literal["left", "right"] = "left"
+    min_width: int | None = None
+    max_width: int | None = None
 
     def value(self, record: Record) -> str:
         raw = (
@@ -47,6 +50,9 @@ def write_table(
             width=column.width,
             no_wrap=column.no_wrap,
             overflow="ellipsis",
+            justify=column.justify,
+            min_width=column.min_width,
+            max_width=column.max_width,
         )
 
     count = 0

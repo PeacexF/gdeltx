@@ -21,9 +21,10 @@ from gdeltx.commands import context as context_cmd
 from gdeltx.commands import entities as entities_cmd
 from gdeltx.commands import events as events_cmd
 from gdeltx.commands import search as search_cmd
+from gdeltx.commands import sources as sources_cmd
 from gdeltx.config import Config, apply_overrides, load
 from gdeltx.console import Reporter
-from gdeltx.errors import GdeltxError
+from gdeltx.errors import GdeltxError, InputError
 from gdeltx.models import EntityType
 from gdeltx.output import Format
 from gdeltx.sources import HttpClient, RateLimiter
@@ -318,6 +319,97 @@ def context_command(
             max_records=max_records,
             sort=sort,
             include_raw=include_raw,
+        )
+
+
+@app.command("sources")
+def sources_command(
+    ctx: typer.Context,
+    query: Annotated[
+        str,
+        typer.Argument(help="A GDELT query (--from doc) or a plain phrase (--from gkg)."),
+    ],
+    origin: Annotated[
+        sources_cmd.Origin,
+        typer.Option(
+            "--from",
+            case_sensitive=False,
+            help="doc: articles from `search` (country, language). "
+            "gkg: GKG records from `entities` (tone, themes).",
+        ),
+    ] = sources_cmd.Origin.DOC,
+    since: FileSince = None,
+    until: Until = None,
+    max_records: Annotated[
+        int, typer.Option("--max", min=1, help="Articles to aggregate (--from doc).")
+    ] = 250,
+    top: Annotated[int, typer.Option("--top", min=1, help="Sources to show.")] = 25,
+    domains: Annotated[
+        list[str] | None, typer.Option("--domain", help="Only this domain (--from doc).")
+    ] = None,
+    languages: Annotated[
+        list[str] | None, typer.Option("--language", help="Only this language (--from doc).")
+    ] = None,
+    countries: Annotated[
+        list[str] | None, typer.Option("--country", help="Only this country (--from doc).")
+    ] = None,
+    allow_large: AllowLarge = False,
+    fmt: FormatOpt = None,
+    as_json: Json = False,
+    as_jsonl: Jsonl = False,
+    as_csv: Csv = False,
+    no_cache: NoCache = False,
+    cache_ttl: CacheTtl = None,
+) -> None:
+    """Coverage of the query grouped by publishing domain."""
+    app_ctx = build_context(
+        ctx,
+        fmt=fmt,
+        as_json=as_json,
+        as_jsonl=as_jsonl,
+        as_csv=as_csv,
+        no_cache=no_cache,
+        cache_ttl=cache_ttl,
+    )
+
+    if origin is sources_cmd.Origin.DOC:
+        if allow_large:
+            raise InputError("--allow-large only applies with --from gkg")
+        with app_ctx.http() as http:
+            sources_cmd.run_doc(
+                query,
+                http=http,
+                reporter=app_ctx.reporter,
+                fmt=app_ctx.format,
+                since=since,
+                until=until,
+                max_records=max_records,
+                domains=tuple(domains or ()),
+                languages=tuple(languages or ()),
+                countries=tuple(countries or ()),
+                top=top,
+            )
+        return
+
+    if domains or languages or countries:
+        raise InputError(
+            "--domain, --language and --country only apply with --from doc",
+            hint="GKG matching is plain text; see `gdeltx entities --help`.",
+        )
+    term = plain_query(query)
+    start, end = resolve_range(since, until, default=FILE_SPAN)
+    fetcher = app_ctx.fetcher()
+    with fetcher.http:
+        file_plan = app_ctx.plan_files(fetcher, Dataset.GKG, start, end, allow_large=allow_large)
+        sources_cmd.run_gkg(
+            term,
+            fetcher=fetcher,
+            file_plan=file_plan,
+            reporter=app_ctx.reporter,
+            fmt=app_ctx.format,
+            start=start,
+            end=end,
+            top=top,
         )
 
 

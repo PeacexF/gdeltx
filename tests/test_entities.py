@@ -19,8 +19,8 @@ from gdeltx.cli import app
 from gdeltx.commands.entities import write_sections
 from gdeltx.errors import InputError
 from gdeltx.models import Entity, EntityType
-from gdeltx.parsers.gkg import MATCH_FIELDS, parse_gkg, published_at, row_entities
-from gdeltx.sources.files import Dataset, plain_query, row_mentions
+from gdeltx.parsers.gkg import names_query, page_title, parse_gkg, published_at, row_entities
+from gdeltx.sources.files import Dataset, plain_query
 
 T1 = datetime(2026, 9, 12, 10, 0, tzinfo=UTC)
 T2 = datetime(2026, 9, 12, 11, 0, tzinfo=UTC)
@@ -107,19 +107,49 @@ def test_v1_fields_are_the_fallback() -> None:
 def test_query_must_be_named_not_just_present_in_the_url() -> None:
     row = parse_gkg(article("https://company-x-news.com/a", "company-x-news.com", persons="A,1"))
     assert row is not None
-    assert not row_mentions(row, MATCH_FIELDS, "company-x")
-    assert row_mentions(parse_gkg(ROWS[0]), MATCH_FIELDS, "company x")
+    assert not names_query(row, "company-x")
+    assert names_query(parse_gkg(ROWS[0]), "company x")
 
 
 def test_page_title_counts_as_naming_the_query() -> None:
     row = parse_gkg(article("https://e.com/t", "e.com", title="Company X fined"))
-    assert row is not None and row_mentions(row, MATCH_FIELDS, "company x")
+    assert row is not None and names_query(row, "company x")
 
 
 @pytest.mark.parametrize("query", ["a OR b", "(Company X)", "domain:bbc.com", '"x" -y', ""])
 def test_query_syntax_is_refused(query: str) -> None:
     with pytest.raises(InputError):
         plain_query(query)
+
+
+def captured_gkg(fixtures_dir) -> list[dict]:
+    lines = (fixtures_dir / "gkg.sample.tsv").read_text("utf-8").splitlines()
+    return [row for row in map(parse_gkg, lines) if row is not None]
+
+
+def test_captured_links_and_amp_urls_do_not_count_as_naming(fixtures_dir) -> None:
+    rows = captured_gkg(fixtures_dir)
+    assert any("substack.com" in (row["V2EXTRASXML"] or "") for row in rows)
+    assert not any(names_query(row, "substack") for row in rows)
+
+
+def test_captured_title_is_unescaped_and_matched(fixtures_dir) -> None:
+    rows = captured_gkg(fixtures_dir)
+    nbc = next(row for row in rows if row["V2SOURCECOMMONNAME"] == "nbcdfw.com")
+    assert page_title(nbc) == (
+        "President Donald Trump's childhood home sells for $2 million \u2013 "
+        "NBC 5 Dallas-Fort Worth"
+    )
+    assert names_query(nbc, "childhood home")
+
+
+def test_captured_rows_yield_every_entity_kind(fixtures_dir) -> None:
+    row = captured_gkg(fixtures_dir)[0]
+    found = row_entities(row)
+    assert (EntityType.PERSON, "Micheal Martin") in found
+    assert (EntityType.COUNTRY, "Ireland") in found
+    assert found.count((EntityType.COUNTRY, "Ireland")) == 1
+    assert (EntityType.ORGANIZATION, "White House") in found
 
 
 # ---- aggregation --------------------------------------------------------------

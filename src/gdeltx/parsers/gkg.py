@@ -7,6 +7,8 @@ variants append the character offset of each mention in the article.
 
 from __future__ import annotations
 
+import html
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -44,13 +46,16 @@ GKG_COLUMNS = (
 )
 
 
-# Where a plain-text query must appear for a GKG record to count as matching.
-MATCH_FIELDS = (
+# Where a plain-text query must appear for a GKG record to count as matching,
+# besides the page title. V2EXTRASXML as a whole is not searched: it also holds
+# PAGE_LINKS and AMP URLs, so an article merely linking to a site would match.
+NAME_FIELDS = (
     "V2ENHANCEDPERSONS",
     "V2ENHANCEDORGANIZATIONS",
     "V21ALLNAMES",
-    "V2EXTRASXML",
 )
+
+_PAGE_TITLE = re.compile(r"<PAGE_TITLE>(.*?)</PAGE_TITLE>", re.DOTALL)
 
 COUNTRY_LOCATION_TYPE = 1
 
@@ -138,6 +143,18 @@ def parse_tone(value: str | None) -> GkgTone | None:
         self_group_density=_float(parts[5]),
         word_count=_int(parts[6]),
     )
+
+
+def page_title(row: dict[str, str | None]) -> str | None:
+    match = _PAGE_TITLE.search(row.get("V2EXTRASXML") or "")
+    title = html.unescape(match[1]).strip() if match else ""
+    return title or None
+
+
+def names_query(row: dict[str, str | None], term: str) -> bool:
+    needle = term.casefold()
+    fields = (*(row.get(name) for name in NAME_FIELDS), page_title(row))
+    return any(needle in (value or "").casefold() for value in fields)
 
 
 def published_at(row: dict[str, str | None]) -> datetime | None:
