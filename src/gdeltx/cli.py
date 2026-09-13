@@ -5,6 +5,7 @@ Holds argument wiring only. Investigation logic lives in ``commands``.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ from gdeltx.output import Format
 from gdeltx.sources import HttpClient, RateLimiter
 from gdeltx.sources.context import Sort as ContextSort
 from gdeltx.sources.doc import Sort as DocSort
+from gdeltx.sources.files import Dataset, FileFetcher, contains_any, guard, latest_stamp, plan
+from gdeltx.timeparse import resolve_range
 
 app = typer.Typer(
     name="gdeltx",
@@ -49,6 +52,9 @@ NoCache = Annotated[bool, typer.Option("--no-cache", help="Bypass the local cach
 CacheTtl = Annotated[
     int | None, typer.Option("--cache-ttl", min=0, help="Cache lifetime in seconds.")
 ]
+AllowLarge = Annotated[
+    bool, typer.Option("--allow-large", help="Allow ranges above files.max_files.")
+]
 IncludeRaw = Annotated[
     bool, typer.Option("--raw", help="Keep the original GDELT record in machine output.")
 ]
@@ -66,10 +72,35 @@ class Context:
     def cache(self) -> CacheStore:
         settings = self.config.cache
         return CacheStore(
-            settings.resolved_directory(),
+            settings.resolved_directory() / "api",
             enabled=settings.enabled,
             ttl=settings.ttl,
             max_bytes=settings.max_bytes,
+        )
+
+    def file_cache(self) -> CacheStore:
+        settings = self.config.cache
+        # Published GDELT files never change, so they are evicted by size, not age.
+        return CacheStore(
+            settings.resolved_directory() / "files",
+            enabled=settings.enabled,
+            ttl=None,
+            max_bytes=settings.max_bytes,
+        )
+
+    def fetcher(self) -> FileFetcher:
+        # data.gdeltproject.org is static hosting, separate from the rate-limited API.
+        http = HttpClient(
+            timeout=self.config.api.timeout,
+            retries=self.config.api.retries,
+            reporter=self.reporter,
+            user_agent=self.config.api.user_agent,
+        )
+        return FileFetcher(
+            http,
+            cache=self.file_cache(),
+            reporter=self.reporter,
+            workers=self.config.files.workers,
         )
 
     def http(self) -> HttpClient:
@@ -245,6 +276,48 @@ def context_command(
             sort=sort,
             include_raw=include_raw,
         )
+
+
+@app.command("_files", hidden=True)
+def files_command(
+    ctx: typer.Context,
+    dataset: Annotated[Dataset, typer.Argument(case_sensitive=False)],
+    since: Since = "1h",
+    until: Until = None,
+    match: Annotated[
+        list[str] | None, typer.Option("--match", help="Count rows containing this text.")
+    ] = None,
+    allow_large: AllowLarge = False,
+    no_cache: NoCache = False,
+) -> None:
+    """Inspect the bulk file layer: one JSON line per file."""
+    app_ctx = build_context(ctx, no_cache=no_cache)
+    start, end = resolve_range(since, until)
+    fetcher = app_ctx.fetcher()
+    with fetcher.http:
+        file_plan = plan(dataset, start, end, latest=latest_stamp(fetcher.http))
+        files = app_ctx.config.files
+        guard(
+            file_plan,
+            warn_at=files.warn_files,
+            refuse_at=files.max_files,
+            allow_large=allow_large,
+            reporter=app_ctx.reporter,
+        )
+        matches = contains_any(match or [])
+        for content in fetcher.iter_files(file_plan):
+            lines = matched = 0
+            for line in content.lines:
+                lines += 1
+                matched += matches(line)
+            record = {
+                "stamp": content.stamp.isoformat(),
+                "url": content.url,
+                "cached": content.cached,
+                "lines": lines,
+                "matched": matched,
+            }
+            sys.stdout.write(json.dumps(record) + "\n")
 
 
 def main() -> None:

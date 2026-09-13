@@ -19,7 +19,7 @@ from gdeltx import __version__
 from gdeltx.cache import CacheStore
 from gdeltx.cache.store import cache_key
 from gdeltx.console import Reporter
-from gdeltx.errors import APIError, ParseError, RateLimitError
+from gdeltx.errors import APIError, NotFoundError, ParseError, RateLimitError
 
 USER_AGENT = f"gdeltx/{__version__} (+https://github.com/PeacexF/gdeltx)"
 
@@ -129,20 +129,22 @@ class HttpClient:
         *,
         params: dict[str, Any] | None = None,
         label: str | None = None,
+        use_cache: bool = True,
     ) -> Fetched:
         endpoint = label or url
         key = cache_key(url, params)
 
-        if self.cache is not None:
-            entry = self.cache.get(key)
+        cache = self.cache if use_cache else None
+        if cache is not None:
+            entry = cache.get(key)
             if entry is not None:
                 self.reporter.debug(f"cache hit ({int(entry.age)}s old): {endpoint}")
                 return Fetched(body=entry.body, url=url, from_cache=True)
 
         body = self._request_with_retries(url, params, endpoint)
 
-        if self.cache is not None:
-            self.cache.set(key, body, metadata={"url": url, "params": params or {}})
+        if cache is not None:
+            cache.set(key, body, metadata={"url": url, "params": params or {}})
 
         return Fetched(body=body, url=url, from_cache=False)
 
@@ -168,7 +170,8 @@ class HttpClient:
                 if response.status_code not in RETRYABLE_STATUS:
                     if response.is_success:
                         return response.content
-                    raise APIError(
+                    error = NotFoundError if response.status_code == 404 else APIError
+                    raise error(
                         f"GDELT returned HTTP {response.status_code} while querying {endpoint}.",
                         hint=_body_hint(response),
                     )

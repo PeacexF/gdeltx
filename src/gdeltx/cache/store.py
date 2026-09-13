@@ -66,12 +66,13 @@ class CacheStore:
             stored_at = float(meta["stored_at"])
             body = body_path.read_bytes()
         except OSError, ValueError, KeyError:
-            self._discard(key)
+            self.discard(key)
             return None
 
         if self.ttl is not None and time.time() - stored_at > self.ttl:
             return None
 
+        body_path.touch()
         return CacheEntry(
             key=key,
             body=body,
@@ -98,7 +99,7 @@ class CacheStore:
         except OSError as exc:
             raise CacheError(f"cannot write cache entry {key}: {exc}") from None
 
-    def _discard(self, key: str) -> None:
+    def discard(self, key: str) -> None:
         for path in self._paths(key):
             path.unlink(missing_ok=True)
 
@@ -108,7 +109,7 @@ class CacheStore:
         return sum(p.stat().st_size for p in self.directory.rglob("*") if p.is_file())
 
     def evict_to_limit(self) -> int:
-        """Drop least-recently-stored entries until the store fits max_bytes."""
+        """Drop least-recently-used entries until the store fits max_bytes."""
         if not self.directory.is_dir():
             return 0
         bodies = sorted(
@@ -125,7 +126,7 @@ class CacheStore:
             total -= body_path.stat().st_size
             if meta_path.is_file():
                 total -= meta_path.stat().st_size
-            self._discard(key)
+            self.discard(key)
             removed += 1
         return removed
 

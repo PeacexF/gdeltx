@@ -51,6 +51,24 @@ want geo_pointdata.geojson \
 want lastupdate.txt \
   "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
 
+# Bulk file samples: the first rows of the newest Events and GKG files. These pin
+# the 61- and 27-column layouts to real data. Static hosting, not the rate-limited API.
+sample () {
+  local name="$1" suffix="$2" out="$DEST/$1" url
+  [ -s "$out" ] && return
+  url=$(grep "$suffix" "$DEST/lastupdate.txt" | awk '{print $3}' | sed 's#^http://#https://#')
+  [ -n "$url" ] || { echo "no $suffix entry in lastupdate.txt"; return; }
+  curl -sSL -A "$UA" --max-time 120 -o "$DEST/.sample.zip" "$url" \
+    && unzip -p "$DEST/.sample.zip" | head -n 5 > "$out"
+  rm -f "$DEST/.sample.zip"
+  printf '%-26s %-6s %-8s %s\n' "$name" "rows" "$(wc -l < "$out" | tr -d ' ')" "$url"
+}
+
+if [ -s "$DEST/lastupdate.txt" ]; then
+  sample events_export.sample.tsv export.CSV.zip
+  sample gkg.sample.tsv gkg.csv.zip
+fi
+
 echo
 echo "Already captured, skipped: doc_timeline_2017.json doc_error_maxrecords.txt"
 echo "                          doc_rate_limited.txt context_empty.json"

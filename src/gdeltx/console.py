@@ -6,8 +6,11 @@ Everything here writes to stderr so that stdout carries only data.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 
 from gdeltx.errors import GdeltxError
 
@@ -37,3 +40,16 @@ class Reporter:
                 self._console.print(exc.hint)
         else:
             self._console.print(f"[red]ERROR:[/red] {exc}")
+
+    @contextmanager
+    def progress(self, total: int, description: str) -> Iterator[Callable[[], None]]:
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            console=self._console,
+            transient=True,
+            disable=not self.show_progress,
+        ) as bar:
+            task = bar.add_task(description, total=total)
+            yield lambda: bar.advance(task)

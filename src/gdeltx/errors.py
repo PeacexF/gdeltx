@@ -30,6 +30,10 @@ class CacheError(GdeltxError):
     exit_code = 74
 
 
+class NotFoundError(APIError):
+    pass
+
+
 class RateLimitError(APIError):
     exit_code = 75
 

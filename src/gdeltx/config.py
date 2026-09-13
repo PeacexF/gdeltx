@@ -54,6 +54,13 @@ class CacheConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class FilesConfig:
+    warn_files: int = 192
+    max_files: int = 1000
+    workers: int = 4
+
+
+@dataclass(frozen=True, slots=True)
 class OutputConfig:
     format: str = "table"
 
@@ -62,11 +69,17 @@ class OutputConfig:
 class Config:
     api: ApiConfig = ApiConfig()
     cache: CacheConfig = CacheConfig()
+    files: FilesConfig = FilesConfig()
     output: OutputConfig = OutputConfig()
     source_path: Path | None = None
 
 
-_SECTIONS: dict[str, type] = {"api": ApiConfig, "cache": CacheConfig, "output": OutputConfig}
+_SECTIONS: dict[str, type] = {
+    "api": ApiConfig,
+    "cache": CacheConfig,
+    "files": FilesConfig,
+    "output": OutputConfig,
+}
 
 
 def _expected_type(cls: type, key: str) -> type:
@@ -144,6 +157,10 @@ def _validate(config: Config) -> None:
         raise ConfigError("api.timeout must be greater than zero")
     if config.cache.ttl < 0:
         raise ConfigError("cache.ttl must not be negative")
+    if config.files.workers < 1:
+        raise ConfigError("files.workers must be at least 1")
+    if not 0 < config.files.warn_files <= config.files.max_files:
+        raise ConfigError("files.warn_files must be positive and not above files.max_files")
     if config.api.user_agent is not None and not config.api.user_agent.strip():
         raise ConfigError("api.user_agent must not be empty")
 

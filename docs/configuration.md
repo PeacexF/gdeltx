@@ -28,6 +28,11 @@ min_interval = 5.0
 enabled = true
 ttl = 3600
 
+[files]
+warn_files = 192
+max_files = 1000
+workers = 4
+
 [output]
 format = "table"
 ```
@@ -42,13 +47,16 @@ format = "table"
 | `api.user_agent` | unset | Override the User-Agent sent to GDELT |
 | `cache.enabled` | `true` | Whether responses are cached |
 | `cache.ttl` | `3600` | Cache lifetime in seconds |
+| `files.warn_files` | `192` | Warn before downloading more bulk files than this |
+| `files.max_files` | `1000` | Refuse larger ranges unless `--allow-large` is passed |
+| `files.workers` | `4` | Concurrent bulk file downloads |
 | `output.format` | `"table"` | One of `table`, `json`, `jsonl`, `csv` |
 
 ## Cache
 
-Cached responses live in `~/.cache/gdeltx/`, keyed by a hash of the endpoint and its normalized parameters. Each entry stores the request metadata, the response body and a timestamp.
+API responses live in `~/.cache/gdeltx/api/`, keyed by a hash of the endpoint and its normalized parameters. Each entry stores the request metadata, the response body and a timestamp.
 
-Bulk GDELT files are immutable once published, so they are cached by name and do not expire; they are evicted by size rather than age.
+Bulk GDELT files live in `~/.cache/gdeltx/files/`. They are immutable once published, so they never expire; when the store exceeds `cache.max_bytes`, the least recently used files are evicted.
 
 A cached result is never presented as fresh — `--verbose` reports cache hits on stderr.
 
