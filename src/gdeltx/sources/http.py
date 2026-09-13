@@ -34,6 +34,19 @@ RETRYABLE_EXCEPTIONS = (
 
 MAX_BACKOFF = 60.0
 
+# GDELT answers some failures with HTTP 200 and a one-line plain-text body
+# rather than an error status, so a short non-JSON body is treated as an error.
+PLAIN_ERROR_MAX_BYTES = 600
+
+
+def gdelt_error_message(body: bytes) -> str | None:
+    text = body.decode("utf-8", errors="replace").strip()
+    if not text or len(body) > PLAIN_ERROR_MAX_BYTES:
+        return None
+    if text[0] in "{[<":
+        return None
+    return " ".join(text.split())
+
 
 class RateLimiter:
     """Spaces requests by at least ``min_interval`` seconds."""
@@ -65,6 +78,9 @@ class Fetched:
         try:
             return json.loads(self.body)
         except ValueError as exc:
+            message = gdelt_error_message(self.body)
+            if message is not None:
+                raise APIError(f"GDELT rejected the query: {message}") from None
             raise ParseError(
                 f"GDELT returned a response that is not valid JSON ({exc})",
                 hint=f"Endpoint: {self.url}",
@@ -84,16 +100,18 @@ class HttpClient:
         rate_limiter: RateLimiter | None = None,
         cache: CacheStore | None = None,
         reporter: Reporter | None = None,
+        user_agent: str | None = None,
         client: httpx.Client | None = None,
     ) -> None:
         self.retries = retries
+        self.user_agent = user_agent or USER_AGENT
         self.cache = cache
         self.reporter = reporter or Reporter()
         self.rate_limiter = rate_limiter
         self._client = client or httpx.Client(
             timeout=timeout,
             follow_redirects=True,
-            headers={"User-Agent": USER_AGENT},
+            headers={"User-Agent": self.user_agent},
         )
 
     def __enter__(self) -> HttpClient:
@@ -132,6 +150,7 @@ class HttpClient:
         self, url: str, params: dict[str, Any] | None, endpoint: str
     ) -> bytes:
         last_error: str = "unknown error"
+        last_body: str | None = None
 
         for attempt in range(self.retries + 1):
             if self.rate_limiter is not None:
@@ -154,6 +173,7 @@ class HttpClient:
                         hint=_body_hint(response),
                     )
                 last_error = f"HTTP {response.status_code}"
+                last_body = gdelt_error_message(response.content)
                 retry_after = _retry_after(response)
 
             if attempt < self.retries:
@@ -163,7 +183,7 @@ class HttpClient:
                 )
                 time.sleep(delay)
 
-        raise _final_error(last_error, endpoint, self.retries + 1)
+        raise _final_error(last_error, endpoint, self.retries + 1, last_body)
 
 
 def _backoff(attempt: int) -> float:
@@ -187,14 +207,17 @@ def _body_hint(response: httpx.Response) -> str | None:
     return f"Response: {snippet[:200]}"
 
 
-def _final_error(last_error: str, endpoint: str, attempts: int) -> APIError:
+def _final_error(last_error: str, endpoint: str, attempts: int, last_body: str | None) -> APIError:
     message = (
         f"GDELT request failed after {attempts} attempts ({last_error}) while querying {endpoint}."
     )
     if last_error.startswith("HTTP 429"):
         return RateLimitError(
             message,
-            hint="GDELT is rate limiting this client. "
-            "Wait a few minutes, or raise api.min_interval.",
+            hint=last_body
+            or "GDELT is rate limiting this client. Raise api.min_interval and try again.",
         )
-    return APIError(message, hint="Check connectivity, then retry with --verbose for detail.")
+    return APIError(
+        message,
+        hint=last_body or "Check connectivity, then retry with --verbose for detail.",
+    )

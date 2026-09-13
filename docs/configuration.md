@@ -22,6 +22,7 @@ A missing config file is not an error.
 [api]
 timeout = 30
 retries = 3
+min_interval = 5.0
 
 [cache]
 enabled = true
@@ -37,6 +38,8 @@ format = "table"
 |---|---|---|
 | `api.timeout` | `30` | Per-request timeout in seconds |
 | `api.retries` | `3` | Retry attempts before giving up |
+| `api.min_interval` | `5.0` | Minimum seconds between API requests |
+| `api.user_agent` | unset | Override the User-Agent sent to GDELT |
 | `cache.enabled` | `true` | Whether responses are cached |
 | `cache.ttl` | `3600` | Cache lifetime in seconds |
 | `output.format` | `"table"` | One of `table`, `json`, `jsonl`, `csv` |
@@ -54,6 +57,24 @@ Overrides:
 ```bash
 gdeltx search "..." --no-cache
 gdeltx search "..." --cache-ttl 600
+```
+
+## User-Agent
+
+GDELT answers `429` both when rate limiting and when it refuses a client's User-Agent, so a
+429 on the very first request usually means the User-Agent, not the request rate.
+
+By default gdeltx identifies itself honestly:
+
+```text
+gdeltx/<version> (+https://github.com/PeacexF/gdeltx)
+```
+
+If GDELT refuses that, override it:
+
+```toml
+[api]
+user_agent = "..."
 ```
 
 ## Environment variables

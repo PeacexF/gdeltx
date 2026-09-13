@@ -189,3 +189,29 @@ def test_client_closes_cleanly() -> None:
     respx.get(URL).mock(return_value=httpx.Response(200, json={}))
     with HttpClient(reporter=Reporter(quiet=True)) as client:
         client.get(URL)
+
+
+@respx.mock
+def test_custom_user_agent_is_sent() -> None:
+    route = respx.get(URL).mock(return_value=httpx.Response(200, json={}))
+    client = HttpClient(user_agent="custom/1.0", reporter=Reporter(quiet=True))
+    client.get(URL)
+    assert route.calls.last.request.headers["user-agent"] == "custom/1.0"
+
+
+@respx.mock
+def test_429_hint_quotes_gdelts_own_message(client: HttpClient) -> None:
+    """GDELT explains the limit in the response body; surface that, do not guess."""
+    body = b"Please limit requests to one every 5 seconds or contact someone@example.com"
+    respx.get(URL).mock(return_value=httpx.Response(429, content=body))
+    with pytest.raises(RateLimitError) as excinfo:
+        client.get(URL)
+    assert "one every 5 seconds" in (excinfo.value.hint or "")
+
+
+@respx.mock
+def test_429_without_a_body_falls_back_to_generic_hint(client: HttpClient) -> None:
+    respx.get(URL).mock(return_value=httpx.Response(429))
+    with pytest.raises(RateLimitError) as excinfo:
+        client.get(URL)
+    assert "api.min_interval" in (excinfo.value.hint or "")

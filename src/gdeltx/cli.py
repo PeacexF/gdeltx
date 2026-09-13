@@ -75,6 +75,7 @@ class Context:
             rate_limiter=RateLimiter(self.config.api.min_interval),
             cache=self.cache(),
             reporter=self.reporter,
+            user_agent=self.config.api.user_agent,
         )
 
 

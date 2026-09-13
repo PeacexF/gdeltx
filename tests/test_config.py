@@ -106,3 +106,17 @@ def test_cache_directory_expands_user(tmp_path: Path) -> None:
     config = load(write(tmp_path, '[cache]\ndirectory = "~/somewhere"\n'))
     assert config.cache.resolved_directory().is_absolute()
     assert "~" not in str(config.cache.resolved_directory())
+
+
+def test_user_agent_defaults_to_none() -> None:
+    assert Config().api.user_agent is None
+
+
+def test_user_agent_can_be_configured(tmp_path: Path) -> None:
+    config = load(write(tmp_path, '[api]\nuser_agent = "custom/1.0"\n'))
+    assert config.api.user_agent == "custom/1.0"
+
+
+def test_empty_user_agent_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="user_agent"):
+        load(write(tmp_path, '[api]\nuser_agent = "  "\n'))

@@ -39,6 +39,7 @@ class ApiConfig:
     timeout: float = 30.0
     retries: int = 3
     min_interval: float = 5.0
+    user_agent: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,8 @@ def _expected_type(cls: type, key: str) -> type:
     annotation = str(cls.__dataclass_fields__[key].type)
     if "Path" in annotation:
         return Path
+    if "str" in annotation:
+        return str
     return type(getattr(cls(), key))
 
 
@@ -141,6 +144,8 @@ def _validate(config: Config) -> None:
         raise ConfigError("api.timeout must be greater than zero")
     if config.cache.ttl < 0:
         raise ConfigError("cache.ttl must not be negative")
+    if config.api.user_agent is not None and not config.api.user_agent.strip():
+        raise ConfigError("api.user_agent must not be empty")
 
 
 def apply_overrides(
