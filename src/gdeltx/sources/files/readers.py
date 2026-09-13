@@ -2,14 +2,40 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+import re
+from collections.abc import Callable, Iterable, Iterator
 
 from gdeltx.console import Reporter
+from gdeltx.errors import InputError
 from gdeltx.parsers.events import parse_event
 from gdeltx.parsers.gkg import parse_gkg
 from gdeltx.sources.files.fetch import FileFetcher, FilePlan
 
 Row = dict[str, str | None]
+
+# Boolean keywords are only operators in upper case, so "Procter and Gamble" is plain text.
+_QUERY_SYNTAX = re.compile(r'[()"]|\b(?:OR|AND|NOT)\b|(?:^|\s)-\S|\b[A-Za-z]+\d*:')
+
+
+def plain_query(query: str) -> str:
+    """Bulk files have no query engine: accept one plain phrase, matched as a substring."""
+    term = " ".join(query.split())
+    if len(term) >= 2 and term[0] == term[-1] == '"':
+        term = term[1:-1].strip()
+    if not term:
+        raise InputError("empty query")
+    if _QUERY_SYNTAX.search(term):
+        raise InputError(
+            f"this command matches plain text only, but the query uses query syntax: {query}",
+            hint='Pass a single name or phrase, e.g. "Company X". '
+            "Boolean and operator queries work with `search` and `context`.",
+        )
+    return term
+
+
+def row_mentions(row: Row, fields: Iterable[str], term: str) -> bool:
+    needle = term.casefold()
+    return any(needle in (row.get(field) or "").casefold() for field in fields)
 
 
 def read_rows(

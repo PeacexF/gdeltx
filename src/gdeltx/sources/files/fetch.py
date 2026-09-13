@@ -57,8 +57,16 @@ class FileContent:
     lines: Iterator[str]
 
 
-def plan(dataset: Dataset, start: datetime, end: datetime, *, latest: datetime) -> FilePlan:
-    return FilePlan(dataset=dataset, stamps=slots(start, min(end, latest)))
+def plan(
+    dataset: Dataset,
+    start: datetime,
+    end: datetime,
+    *,
+    latest: datetime,
+    newest_first: bool = False,
+) -> FilePlan:
+    stamps = slots(start, min(end, latest))
+    return FilePlan(dataset=dataset, stamps=stamps[::-1] if newest_first else stamps)
 
 
 def guard(

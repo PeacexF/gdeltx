@@ -8,7 +8,9 @@ variants append the character offset of each mention in the article.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
+from gdeltx.models import EntityType
 from gdeltx.parsers.events import parse_columns
 
 GKG_COLUMNS = (
@@ -40,6 +42,17 @@ GKG_COLUMNS = (
     "V21TRANSLATIONINFO",
     "V2EXTRASXML",
 )
+
+
+# Where a plain-text query must appear for a GKG record to count as matching.
+MATCH_FIELDS = (
+    "V2ENHANCEDPERSONS",
+    "V2ENHANCEDORGANIZATIONS",
+    "V21ALLNAMES",
+    "V2EXTRASXML",
+)
+
+COUNTRY_LOCATION_TYPE = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +138,35 @@ def parse_tone(value: str | None) -> GkgTone | None:
         self_group_density=_float(parts[5]),
         word_count=_int(parts[6]),
     )
+
+
+def published_at(row: dict[str, str | None]) -> datetime | None:
+    try:
+        return datetime.strptime(row.get("V21DATE") or "", "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def row_entities(row: dict[str, str | None]) -> list[tuple[EntityType, str]]:
+    """Distinct entities named by one GKG record; repeated mentions count once."""
+    found: dict[tuple[EntityType, str], str] = {}
+
+    def add(kind: EntityType, name: str) -> None:
+        name = " ".join(name.split())
+        if name:
+            found.setdefault((kind, name.casefold()), name)
+
+    for mention in parse_mentions(row.get("V2ENHANCEDPERSONS") or row.get("V1PERSONS")):
+        add(EntityType.PERSON, mention.name)
+    for mention in parse_mentions(row.get("V2ENHANCEDORGANIZATIONS") or row.get("V1ORGANIZATIONS")):
+        add(EntityType.ORGANIZATION, mention.name)
+    for location in parse_locations(row.get("V2ENHANCEDLOCATIONS")):
+        kind = EntityType.COUNTRY if location.type == COUNTRY_LOCATION_TYPE else EntityType.LOCATION
+        add(kind, location.name)
+    for mention in parse_mentions(row.get("V2ENHANCEDTHEMES") or row.get("V1THEMES")):
+        add(EntityType.THEME, mention.name)
+
+    return [(kind, name) for (kind, _), name in found.items()]
 
 
 def _entries(value: str | None) -> list[str]:

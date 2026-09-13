@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -17,15 +18,27 @@ import typer
 from gdeltx import __version__
 from gdeltx.cache import CacheStore
 from gdeltx.commands import context as context_cmd
+from gdeltx.commands import entities as entities_cmd
+from gdeltx.commands import events as events_cmd
 from gdeltx.commands import search as search_cmd
 from gdeltx.config import Config, apply_overrides, load
 from gdeltx.console import Reporter
 from gdeltx.errors import GdeltxError
+from gdeltx.models import EntityType
 from gdeltx.output import Format
 from gdeltx.sources import HttpClient, RateLimiter
 from gdeltx.sources.context import Sort as ContextSort
 from gdeltx.sources.doc import Sort as DocSort
-from gdeltx.sources.files import Dataset, FileFetcher, contains_any, guard, latest_stamp, plan
+from gdeltx.sources.files import (
+    Dataset,
+    FileFetcher,
+    FilePlan,
+    contains_any,
+    guard,
+    latest_stamp,
+    plain_query,
+    plan,
+)
 from gdeltx.timeparse import resolve_range
 
 app = typer.Typer(
@@ -51,6 +64,12 @@ Csv = Annotated[bool, typer.Option("--csv", help="Shorthand for --format csv.")]
 NoCache = Annotated[bool, typer.Option("--no-cache", help="Bypass the local cache.")]
 CacheTtl = Annotated[
     int | None, typer.Option("--cache-ttl", min=0, help="Cache lifetime in seconds.")
+]
+FILE_SPAN = timedelta(hours=24)
+
+FileSince = Annotated[
+    str | None,
+    typer.Option("--since", help="Start of the range: 1h, 6h, 24h, 7d, or a date. Default 24h."),
 ]
 AllowLarge = Annotated[
     bool, typer.Option("--allow-large", help="Allow ranges above files.max_files.")
@@ -87,6 +106,30 @@ class Context:
             ttl=None,
             max_bytes=settings.max_bytes,
         )
+
+    def plan_files(
+        self,
+        fetcher: FileFetcher,
+        dataset: Dataset,
+        start: datetime,
+        end: datetime,
+        *,
+        allow_large: bool,
+        newest_first: bool = False,
+    ) -> FilePlan:
+        file_plan = plan(
+            dataset, start, end, latest=latest_stamp(fetcher.http), newest_first=newest_first
+        )
+        files = self.config.files
+        guard(
+            file_plan,
+            warn_at=files.warn_files,
+            refuse_at=files.max_files,
+            allow_large=allow_large,
+            reporter=self.reporter,
+        )
+        self.reporter.debug(f"reading {file_plan.describe()}")
+        return file_plan
 
     def fetcher(self) -> FileFetcher:
         # data.gdeltproject.org is static hosting, separate from the rate-limited API.
@@ -282,7 +325,7 @@ def context_command(
 def files_command(
     ctx: typer.Context,
     dataset: Annotated[Dataset, typer.Argument(case_sensitive=False)],
-    since: Since = "1h",
+    since: FileSince = "1h",
     until: Until = None,
     match: Annotated[
         list[str] | None, typer.Option("--match", help="Count rows containing this text.")
@@ -292,18 +335,10 @@ def files_command(
 ) -> None:
     """Inspect the bulk file layer: one JSON line per file."""
     app_ctx = build_context(ctx, no_cache=no_cache)
-    start, end = resolve_range(since, until)
+    start, end = resolve_range(since, until, default=FILE_SPAN)
     fetcher = app_ctx.fetcher()
     with fetcher.http:
-        file_plan = plan(dataset, start, end, latest=latest_stamp(fetcher.http))
-        files = app_ctx.config.files
-        guard(
-            file_plan,
-            warn_at=files.warn_files,
-            refuse_at=files.max_files,
-            allow_large=allow_large,
-            reporter=app_ctx.reporter,
-        )
+        file_plan = app_ctx.plan_files(fetcher, dataset, start, end, allow_large=allow_large)
         matches = contains_any(match or [])
         for content in fetcher.iter_files(file_plan):
             lines = matched = 0
@@ -318,6 +353,91 @@ def files_command(
                 "matched": matched,
             }
             sys.stdout.write(json.dumps(record) + "\n")
+
+
+@app.command("entities")
+def entities_command(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Argument(help="A name or phrase, matched as plain text.")],
+    since: FileSince = None,
+    until: Until = None,
+    top: Annotated[int, typer.Option("--top", min=1, help="Entities shown per category.")] = 10,
+    types: Annotated[
+        list[EntityType] | None,
+        typer.Option("--type", case_sensitive=False, help="Only this category. Repeatable."),
+    ] = None,
+    mentions: Annotated[
+        bool, typer.Option("--mentions", help="One record per article and entity, not totals.")
+    ] = False,
+    allow_large: AllowLarge = False,
+    fmt: FormatOpt = None,
+    as_json: Json = False,
+    as_jsonl: Jsonl = False,
+    as_csv: Csv = False,
+    no_cache: NoCache = False,
+    include_raw: IncludeRaw = False,
+) -> None:
+    """People, organizations, places and themes in GKG coverage naming the query."""
+    app_ctx = build_context(
+        ctx, fmt=fmt, as_json=as_json, as_jsonl=as_jsonl, as_csv=as_csv, no_cache=no_cache
+    )
+    term = plain_query(query)
+    start, end = resolve_range(since, until, default=FILE_SPAN)
+    fetcher = app_ctx.fetcher()
+    with fetcher.http:
+        file_plan = app_ctx.plan_files(fetcher, Dataset.GKG, start, end, allow_large=allow_large)
+        entities_cmd.run(
+            term,
+            fetcher=fetcher,
+            file_plan=file_plan,
+            reporter=app_ctx.reporter,
+            fmt=app_ctx.format,
+            start=start,
+            end=end,
+            top=top,
+            types=set(types) if types else None,
+            mentions=mentions,
+            include_raw=include_raw,
+        )
+
+
+@app.command("events")
+def events_command(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Argument(help="An actor name, matched as plain text.")],
+    since: FileSince = None,
+    until: Until = None,
+    max_records: Max = 75,
+    allow_large: AllowLarge = False,
+    fmt: FormatOpt = None,
+    as_json: Json = False,
+    as_jsonl: Jsonl = False,
+    as_csv: Csv = False,
+    no_cache: NoCache = False,
+    include_raw: IncludeRaw = False,
+) -> None:
+    """Structured CAMEO events whose actors match the query, newest first."""
+    app_ctx = build_context(
+        ctx, fmt=fmt, as_json=as_json, as_jsonl=as_jsonl, as_csv=as_csv, no_cache=no_cache
+    )
+    term = plain_query(query)
+    start, end = resolve_range(since, until, default=FILE_SPAN)
+    fetcher = app_ctx.fetcher()
+    with fetcher.http:
+        file_plan = app_ctx.plan_files(
+            fetcher, Dataset.EVENTS, start, end, allow_large=allow_large, newest_first=True
+        )
+        events_cmd.run(
+            term,
+            fetcher=fetcher,
+            file_plan=file_plan,
+            reporter=app_ctx.reporter,
+            fmt=app_ctx.format,
+            start=start,
+            end=end,
+            max_records=max_records,
+            include_raw=include_raw,
+        )
 
 
 def main() -> None:
