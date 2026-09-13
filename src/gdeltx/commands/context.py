@@ -71,7 +71,7 @@ def write_reading(
             console.print(Text(record.title, style="bold"), soft_wrap=soft_wrap)
         console.print(Text(_byline(record), style="dim"), soft_wrap=soft_wrap)
         console.print()
-        snippet = Text(record.context or "(no snippet)")
+        snippet = Text(record.sentence or record.context or "(no snippet)")
         if pattern is not None:
             snippet.highlight_regex(pattern, style="bold yellow")
         console.print(snippet, soft_wrap=soft_wrap)

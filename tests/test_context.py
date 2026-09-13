@@ -1,8 +1,8 @@
 """Context 2.0: parsing, window clamping, reading layout and the CLI command.
 
-`context_artlist.synthetic.json` is hand-written: GDELT does not document the
-record field names and no real artlist response has been captured yet
-(API-NOTES §7). Replace it with a capture when one exists.
+`context_artlist.json` is a real capture. `context_artlist.synthetic.json` is
+hand-written to cover edge cases a capture cannot be relied on to contain
+(missing url, blank title, bad date, only one of the text fields).
 """
 
 import csv
@@ -21,7 +21,7 @@ from gdeltx.commands.context import highlight_pattern, highlight_terms, write_re
 from gdeltx.console import Reporter
 from gdeltx.errors import InputError, ParseError
 from gdeltx.models import ContextSnippet
-from gdeltx.parsers.context import parse_articles
+from gdeltx.parsers.context import parse_articles, parse_seendate
 from gdeltx.sources.context import ENDPOINT, Sort, build_params, window_params
 
 NOW = datetime(2026, 9, 12, 12, 0, 0, tzinfo=UTC)
@@ -90,6 +90,17 @@ def test_blank_title_and_bad_date_become_none(fixtures_dir) -> None:
 def test_captured_empty_response(fixtures_dir) -> None:
     data = json.loads((fixtures_dir / "context_empty.json").read_text("utf-8"))
     assert list(parse_articles(data, "OpenAI")) == []
+
+
+def test_captured_response_keeps_sentence_and_passage_apart(fixtures_dir) -> None:
+    data = json.loads((fixtures_dir / "context_artlist.json").read_text("utf-8"))
+    records = list(parse_articles(data, "OpenAI"))
+    assert len(records) == len(data["articles"])
+    first, row = records[0], data["articles"][0]
+    assert first.sentence == row["sentence"]
+    assert first.context == row["context"]
+    assert first.published_at == parse_seendate(row["seendate"])
+    assert first.published_at is not None
 
 
 def test_empty_object_means_no_matches() -> None:

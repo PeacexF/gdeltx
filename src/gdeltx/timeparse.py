@@ -63,7 +63,13 @@ def resolve_range(
     elif _DURATION.match(since.strip()):
         start = end - parse_duration(since)
     else:
-        start = parse_instant(since)
+        try:
+            start = parse_instant(since)
+        except InputError:
+            raise InputError(
+                f'invalid time range: "{since}"',
+                hint="Expected examples: 24h, 7d, 30d, 1y, or a date such as 2026-01-31",
+            ) from None
 
     if start >= end:
         raise InputError(

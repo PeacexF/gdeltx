@@ -1,0 +1,7 @@
+{"articles": [
+  {"url": "https://www.reuters.com/technology/openai-regulation-2026-09-11/", "url_mobile": "", "title": "OpenAI faces new regulation push in Brussels", "seendate": "20260911T121500Z", "socialimage": "https://www.reuters.com/img/openai.jpg", "domain": "reuters.com", "language": "English", "sourcecountry": "United States"},
+  {"url": "https://www.bbc.co.uk/news/articles/openai-lawsuit", "url_mobile": "https://www.bbc.co.uk/news/articles/openai-lawsuit.amp", "title": "Authors widen lawsuit against OpenAI", "seendate": "20260912T083000Z", "socialimage": "", "domain": "bbc.co.uk", "language": "English", "sourcecountry": "United Kingdom"},
+  {"url": "", "title": "Row without a URL", "seendate": "20260912T090000Z", "domain": "example.com"},
+  {"url": "https://www.bbc.co.uk/news/articles/openai-lawsuit", "title": "Authors widen lawsuit against OpenAI", "seendate": "20260912T083000Z", "domain": "bbc.co.uk", "language": "English", "sourcecountry": "United Kingdom"},
+  {"url": "https://example.org/openai", "title": "  ", "seendate": "not-a-date", "domain": "example.org", "language": "French"}
+]}

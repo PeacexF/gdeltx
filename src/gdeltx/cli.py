@@ -16,12 +16,14 @@ import typer
 from gdeltx import __version__
 from gdeltx.cache import CacheStore
 from gdeltx.commands import context as context_cmd
+from gdeltx.commands import search as search_cmd
 from gdeltx.config import Config, apply_overrides, load
 from gdeltx.console import Reporter
 from gdeltx.errors import GdeltxError
 from gdeltx.output import Format
 from gdeltx.sources import HttpClient, RateLimiter
 from gdeltx.sources.context import Sort as ContextSort
+from gdeltx.sources.doc import Sort as DocSort
 
 app = typer.Typer(
     name="gdeltx",
@@ -145,6 +147,62 @@ def build_context(
         parent.config, output_format=resolved, no_cache=no_cache, cache_ttl=cache_ttl
     )
     return Context(config=config, reporter=parent.reporter)
+
+
+@app.command("search")
+def search_command(
+    ctx: typer.Context,
+    query: QueryArg,
+    since: Since = None,
+    until: Until = None,
+    max_records: Max = 75,
+    sort: Annotated[
+        DocSort, typer.Option("--sort", case_sensitive=False, help="Result order.")
+    ] = DocSort.RELEVANCE,
+    domains: Annotated[
+        list[str] | None, typer.Option("--domain", help="Only this domain. Repeatable.")
+    ] = None,
+    languages: Annotated[
+        list[str] | None,
+        typer.Option("--language", help="Only this source language, e.g. english. Repeatable."),
+    ] = None,
+    countries: Annotated[
+        list[str] | None,
+        typer.Option("--country", help="Only this source country, e.g. france. Repeatable."),
+    ] = None,
+    fmt: FormatOpt = None,
+    as_json: Json = False,
+    as_jsonl: Jsonl = False,
+    as_csv: Csv = False,
+    no_cache: NoCache = False,
+    cache_ttl: CacheTtl = None,
+    include_raw: IncludeRaw = False,
+) -> None:
+    """Search news coverage from the last 3 months."""
+    app_ctx = build_context(
+        ctx,
+        fmt=fmt,
+        as_json=as_json,
+        as_jsonl=as_jsonl,
+        as_csv=as_csv,
+        no_cache=no_cache,
+        cache_ttl=cache_ttl,
+    )
+    with app_ctx.http() as http:
+        search_cmd.run(
+            query,
+            http=http,
+            reporter=app_ctx.reporter,
+            fmt=app_ctx.format,
+            since=since,
+            until=until,
+            max_records=max_records,
+            sort=sort,
+            domains=tuple(domains or ()),
+            languages=tuple(languages or ()),
+            countries=tuple(countries or ()),
+            include_raw=include_raw,
+        )
 
 
 @app.command("context")

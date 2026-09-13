@@ -1,7 +1,8 @@
 """Context 2.0 ``artlist`` JSON → :class:`ContextSnippet`.
 
-GDELT has not documented the record field names, so the snippet is read from
-whichever of the candidate keys is present and the original row is kept.
+A captured response carries both ``sentence`` (the matching sentence) and
+``context`` (the surrounding passage). Neither is documented, so each falls
+back to the other rather than leaving a record without text.
 """
 
 from __future__ import annotations
@@ -13,7 +14,8 @@ from typing import Any
 from gdeltx.errors import ParseError
 from gdeltx.models import ContextSnippet
 
-SNIPPET_KEYS = ("context", "sentence", "snippet")
+SENTENCE_KEYS = ("sentence", "snippet")
+PASSAGE_KEYS = ("context", "sentence", "snippet")
 
 SEENDATE_FORMAT = "%Y%m%dT%H%M%SZ"
 
@@ -53,7 +55,8 @@ def parse_articles(
             domain=_text(row.get("domain")),
             language=_text(row.get("language")),
             published_at=parse_seendate(row.get("seendate")),
-            context=next((str(row[k]) for k in SNIPPET_KEYS if row.get(k)), ""),
+            sentence=next((str(row[k]) for k in SENTENCE_KEYS if row.get(k)), None),
+            context=next((str(row[k]) for k in PASSAGE_KEYS if row.get(k)), ""),
             query=query,
             raw=row,
         )

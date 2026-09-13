@@ -94,3 +94,15 @@ def test_resolve_range_rejects_inverted() -> None:
 def test_to_stamp_round_trips() -> None:
     assert to_stamp(NOW) == "20260913120000"
     assert parse_instant(to_stamp(NOW)) == NOW
+
+
+def test_resolve_range_reports_bad_since_as_a_time_range() -> None:
+    with pytest.raises(InputError) as excinfo:
+        resolve_range("banana", now=NOW)
+    assert str(excinfo.value) == 'invalid time range: "banana"'
+    assert "24h, 7d, 30d, 1y" in (excinfo.value.hint or "")
+
+
+def test_resolve_range_reports_bad_until_as_a_timestamp() -> None:
+    with pytest.raises(InputError, match="invalid timestamp"):
+        resolve_range("7d", "banana", now=NOW)
