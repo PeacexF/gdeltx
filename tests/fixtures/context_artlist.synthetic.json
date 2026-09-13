@@ -1,0 +1,6 @@
+{"articles": [
+  {"url": "https://www.reuters.com/technology/openai-regulation-2026-09-11/", "url_mobile": "", "title": "OpenAI faces new regulation push in Brussels", "seendate": "20260911T121500Z", "socialimage": "https://www.reuters.com/img/openai.jpg", "domain": "reuters.com", "language": "English", "isquote": 0, "sentence": "EU officials said on Thursday that OpenAI would be among the first companies subject to the new regulation, which takes effect next year and applies to every general-purpose model provider operating in the bloc."},
+  {"url": "https://www.bbc.co.uk/news/articles/openai-lawsuit", "url_mobile": "", "title": "Authors widen lawsuit against OpenAI", "seendate": "20260912T083000Z", "socialimage": "", "domain": "bbc.co.uk", "language": "English", "isquote": 1, "context": "\"We are asking the court to hold OpenAI accountable,\" the plaintiffs' lawyer told reporters."},
+  {"url": "", "title": "Row without a URL", "seendate": "20260912T090000Z", "domain": "example.com"},
+  {"url": "https://example.org/openai", "title": "  ", "seendate": "not-a-date", "domain": "example.org", "language": "French"}
+]}

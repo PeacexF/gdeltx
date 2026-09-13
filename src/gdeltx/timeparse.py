@@ -23,6 +23,10 @@ _INSTANT_HINT = (
 )
 
 
+def is_duration(text: str) -> bool:
+    return _DURATION.match(text.strip()) is not None
+
+
 def parse_duration(text: str) -> timedelta:
     match = _DURATION.match(text.strip())
     if match is None:

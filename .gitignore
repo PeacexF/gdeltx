@@ -41,6 +41,7 @@ coverage.xml
 # Runtime cache lives in ~/.cache/gdeltx, but keep stray local copies out.
 .cache/
 *.log
+.claude/
 
 # ---- Working notes (intentionally untracked) ----
 notes/
