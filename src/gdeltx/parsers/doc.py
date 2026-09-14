@@ -1,8 +1,9 @@
-"""DOC 2.0 ``artlist`` JSON → :class:`Article`."""
+"""DOC 2.0 ``artlist`` and ``timelinevolraw`` JSON → models."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from datetime import datetime
 from typing import Any
 
 from gdeltx.errors import ParseError
@@ -50,3 +51,32 @@ def _text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def parse_timeline(payload: Any) -> Iterator[tuple[datetime, int]]:
+    """``timelinevolraw`` → ``(date, article_count)`` points, oldest first.
+
+    The response nests one series per requested mode; ``timelinevolraw`` asks
+    for exactly one ("Article Count"), so only ``timeline[0]`` is read.
+    """
+    if not isinstance(payload, dict):
+        raise ParseError(
+            f"unexpected DOC response: expected a JSON object, got {type(payload).__name__}"
+        )
+    series = payload.get("timeline", [])
+    if not isinstance(series, list):
+        raise ParseError("unexpected DOC response: 'timeline' is not a list")
+    if not series:
+        return
+    first = series[0]
+    points = first.get("data", []) if isinstance(first, dict) else None
+    if not isinstance(points, list):
+        raise ParseError("unexpected DOC response: 'timeline[0].data' is not a list")
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        when = parse_seendate(point.get("date"))
+        value = point.get("value")
+        if when is None or not isinstance(value, int | float):
+            continue
+        yield when, int(value)

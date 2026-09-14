@@ -22,6 +22,7 @@ from gdeltx.commands import entities as entities_cmd
 from gdeltx.commands import events as events_cmd
 from gdeltx.commands import search as search_cmd
 from gdeltx.commands import sources as sources_cmd
+from gdeltx.commands import timeline as timeline_cmd
 from gdeltx.config import Config, apply_overrides, load
 from gdeltx.console import Reporter
 from gdeltx.errors import GdeltxError, InputError
@@ -411,6 +412,77 @@ def sources_command(
             end=end,
             top=top,
         )
+
+
+TIMELINE_SPAN = timedelta(days=30)
+
+
+@app.command("timeline")
+def timeline_command(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Argument(help="A name or phrase, matched as plain text.")],
+    since: Annotated[
+        str | None,
+        typer.Option(
+            "--since", help="Start of the range: 24h, 7d, 30d, 1y, or a date. Default 30d."
+        ),
+    ] = None,
+    until: Until = None,
+    bucket: Annotated[
+        timeline_cmd.Bucket | None,
+        typer.Option(
+            "--bucket", case_sensitive=False, help="Override the automatic day/week/month size."
+        ),
+    ] = None,
+    bars: Annotated[
+        bool, typer.Option("--bars", help="Show a bar column for articles in the table view.")
+    ] = False,
+    allow_large: AllowLarge = False,
+    fmt: FormatOpt = None,
+    as_json: Json = False,
+    as_jsonl: Jsonl = False,
+    as_csv: Csv = False,
+    no_cache: NoCache = False,
+    cache_ttl: CacheTtl = None,
+) -> None:
+    """Article and event activity bucketed over time."""
+    app_ctx = build_context(
+        ctx,
+        fmt=fmt,
+        as_json=as_json,
+        as_jsonl=as_jsonl,
+        as_csv=as_csv,
+        no_cache=no_cache,
+        cache_ttl=cache_ttl,
+    )
+    term = plain_query(query)
+    start, end = resolve_range(since, until, default=TIMELINE_SPAN)
+    with app_ctx.http() as http:
+        fetcher = app_ctx.fetcher()
+        with fetcher.http:
+            events_start = timeline_cmd.clip_event_window(
+                start,
+                end,
+                max_files=app_ctx.config.files.max_files,
+                allow_large=allow_large,
+                reporter=app_ctx.reporter,
+            )
+            file_plan = app_ctx.plan_files(
+                fetcher, Dataset.EVENTS, events_start, end, allow_large=allow_large
+            )
+            timeline_cmd.run(
+                term,
+                http=http,
+                fetcher=fetcher,
+                file_plan=file_plan,
+                reporter=app_ctx.reporter,
+                fmt=app_ctx.format,
+                start=start,
+                end=end,
+                events_start=events_start,
+                bucket=bucket,
+                bars=bars,
+            )
 
 
 @app.command("_files", hidden=True)

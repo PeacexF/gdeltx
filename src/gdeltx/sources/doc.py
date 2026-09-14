@@ -19,7 +19,7 @@ from typing import Any
 from gdeltx.console import Reporter
 from gdeltx.errors import InputError
 from gdeltx.models import Article, RequestMeta
-from gdeltx.parsers.doc import article_rows, parse_articles
+from gdeltx.parsers.doc import article_rows, parse_articles, parse_timeline
 from gdeltx.sources.http import HttpClient
 from gdeltx.timeparse import is_duration, parse_duration, resolve_range, to_stamp
 
@@ -29,6 +29,10 @@ LABEL = "DOC API"
 COVERAGE = timedelta(days=90)
 DEFAULT_SPAN = timedelta(hours=24)
 PAGE_SIZE = 250
+# Timeline modes are aggregates, not article records, so they reach back much
+# further than `artlist` — to GDELT 2.0's own launch (ROADMAP §2.1).
+TIMELINE_MIN = datetime(2017, 1, 1, tzinfo=UTC)
+DEFAULT_TIMELINE_SPAN = timedelta(days=30)
 
 
 class Sort(StrEnum):
@@ -270,3 +274,47 @@ def _pages(
         fetched = http.get(ENDPOINT, params=params, label=LABEL)
         meta.cached = meta.cached and fetched.from_cache
         payload = fetched.json()
+
+
+def resolve_timeline_window(
+    start: datetime,
+    end: datetime,
+    *,
+    reporter: Reporter,
+) -> datetime:
+    """Clamp ``start`` to what ``timelinevolraw`` actually covers, warning once."""
+    if start >= TIMELINE_MIN:
+        return start
+    reporter.warn(
+        f"DOC timeline data begins {to_stamp(TIMELINE_MIN)}; start clamped from {to_stamp(start)}."
+    )
+    return TIMELINE_MIN
+
+
+def timeline(
+    http: HttpClient,
+    query: str,
+    *,
+    reporter: Reporter,
+    start: datetime,
+    end: datetime,
+) -> tuple[RequestMeta, list[tuple[datetime, int]]]:
+    """Article counts per day from DOC ``timelinevolraw``, oldest first.
+
+    Unlike ``artlist``, one request returns the whole series regardless of
+    range, so there is no paging here.
+    """
+    if not query.strip():
+        raise InputError("empty query")
+    clamped_start = resolve_timeline_window(start, end, reporter=reporter)
+    params: dict[str, Any] = {
+        "query": query.strip(),
+        "mode": "timelinevolraw",
+        "format": "json",
+        "startdatetime": to_stamp(clamped_start),
+        "enddatetime": to_stamp(end),
+    }
+    fetched = http.get(ENDPOINT, params=params, label=LABEL)
+    payload = fetched.json()
+    meta = RequestMeta(query=query, endpoint="doc", parameters=params, cached=fetched.from_cache)
+    return meta, list(parse_timeline(payload))
