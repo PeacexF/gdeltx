@@ -24,6 +24,23 @@ class Entity(Record):
     query: str
 
 
+class RelatedEntity(Record):
+    """``query`` ``relation`` ``name``: a statistical co-occurrence, never an asserted link."""
+
+    query: str
+    relation: str
+    name: str
+    type: EntityType
+    score: float
+    together: int
+    query_articles: int
+    entity_articles: int
+    total_articles: int
+    sources: int
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+
+
 class EntityMention(Record):
     name: str
     type: EntityType

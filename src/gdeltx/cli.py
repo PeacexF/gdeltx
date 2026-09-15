@@ -20,6 +20,7 @@ from gdeltx.cache import CacheStore
 from gdeltx.commands import context as context_cmd
 from gdeltx.commands import entities as entities_cmd
 from gdeltx.commands import events as events_cmd
+from gdeltx.commands import related as related_cmd
 from gdeltx.commands import search as search_cmd
 from gdeltx.commands import sources as sources_cmd
 from gdeltx.commands import timeline as timeline_cmd
@@ -562,6 +563,51 @@ def entities_command(
             types=set(types) if types else None,
             mentions=mentions,
             include_raw=include_raw,
+        )
+
+
+@app.command("related")
+def related_command(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Argument(help="A name or phrase, matched as plain text.")],
+    since: FileSince = None,
+    until: Until = None,
+    top: Annotated[int, typer.Option("--top", min=1, help="Entities shown per category.")] = 10,
+    min_count: Annotated[
+        int,
+        typer.Option("--min-count", min=1, help="Articles an entity must share with the query."),
+    ] = 2,
+    types: Annotated[
+        list[EntityType] | None,
+        typer.Option("--type", case_sensitive=False, help="Only this category. Repeatable."),
+    ] = None,
+    allow_large: AllowLarge = False,
+    fmt: FormatOpt = None,
+    as_json: Json = False,
+    as_jsonl: Jsonl = False,
+    as_csv: Csv = False,
+    no_cache: NoCache = False,
+) -> None:
+    """Entities that co-occur with the query in GKG coverage, scored against their frequency."""
+    app_ctx = build_context(
+        ctx, fmt=fmt, as_json=as_json, as_jsonl=as_jsonl, as_csv=as_csv, no_cache=no_cache
+    )
+    term = plain_query(query)
+    start, end = resolve_range(since, until, default=FILE_SPAN)
+    fetcher = app_ctx.fetcher()
+    with fetcher.http:
+        file_plan = app_ctx.plan_files(fetcher, Dataset.GKG, start, end, allow_large=allow_large)
+        related_cmd.run(
+            term,
+            fetcher=fetcher,
+            file_plan=file_plan,
+            reporter=app_ctx.reporter,
+            fmt=app_ctx.format,
+            start=start,
+            end=end,
+            top=top,
+            min_count=min_count,
+            types=set(types) if types else None,
         )
 
 

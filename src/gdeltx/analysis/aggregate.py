@@ -25,6 +25,10 @@ class _Tally:
     last_seen: datetime | None = None
 
 
+def entity_key(kind: EntityType, name: str) -> tuple[EntityType, str]:
+    return kind, " ".join(name.split()).casefold()
+
+
 class EntityTally:
     def __init__(self) -> None:
         self._tallies: dict[tuple[EntityType, str], _Tally] = {}
@@ -40,7 +44,7 @@ class EntityTally:
         self.articles += 1
         seen: set[tuple[EntityType, str]] = set()
         for kind, name in entities:
-            key = (kind, " ".join(name.split()).casefold())
+            key = entity_key(kind, name)
             if key in seen or not key[1]:
                 continue
             seen.add(key)
@@ -54,6 +58,9 @@ class EntityTally:
                     tally.first_seen = seen_at
                 if tally.last_seen is None or seen_at > tally.last_seen:
                     tally.last_seen = seen_at
+
+    def __contains__(self, key: tuple[EntityType, str]) -> bool:
+        return key in self._tallies
 
     def ranked(self, kind: EntityType, *, query: str, top: int | None = None) -> list[Entity]:
         entities = [
