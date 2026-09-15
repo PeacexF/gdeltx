@@ -34,6 +34,8 @@ RETRYABLE_EXCEPTIONS = (
 
 MAX_BACKOFF = 60.0
 
+ALLOWED_HOSTS = frozenset({"api.gdeltproject.org", "data.gdeltproject.org"})
+
 # GDELT answers some failures with HTTP 200 and a one-line plain-text body
 # rather than an error status, so a short non-JSON body is treated as an error.
 PLAIN_ERROR_MAX_BYTES = 600
@@ -112,6 +114,8 @@ class HttpClient:
             timeout=timeout,
             follow_redirects=True,
             headers={"User-Agent": self.user_agent},
+            # Request hooks also run for each redirect hop.
+            event_hooks={"request": [_require_gdelt]},
         )
 
     def __enter__(self) -> HttpClient:
@@ -187,6 +191,13 @@ class HttpClient:
                 time.sleep(delay)
 
         raise _final_error(last_error, endpoint, self.retries + 1, last_body)
+
+
+def _require_gdelt(request: httpx.Request) -> None:
+    if request.url.scheme != "https" or request.url.host not in ALLOWED_HOSTS:
+        raise APIError(
+            f"refusing to contact {request.url.scheme}://{request.url.host}: not a GDELT host"
+        )
 
 
 def _backoff(attempt: int) -> float:

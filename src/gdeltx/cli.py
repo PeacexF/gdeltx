@@ -700,7 +700,12 @@ def geo_command(
 def main() -> None:
     reporter = Reporter()
     try:
-        app()
+        try:
+            app()
+        finally:
+            # Flush while the handlers below still apply: a reader that exits
+            # early (`| head`) would otherwise fail the flush at shutdown.
+            sys.stdout.flush()
     except GdeltxError as exc:
         reporter.error(exc)
         raise SystemExit(exc.exit_code) from None

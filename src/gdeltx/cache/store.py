@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from gdeltx.errors import CacheError
+
+_KEY = re.compile(r"[0-9a-f]{64}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +53,9 @@ class CacheStore:
         self.max_bytes = max_bytes
 
     def _paths(self, key: str) -> tuple[Path, Path]:
+        # Only digests become paths, so no key can name a file outside the store.
+        if not _KEY.fullmatch(key):
+            raise CacheError(f"invalid cache key: {key!r}")
         shard = self.directory / key[:2]
         return shard / f"{key}.json", shard / f"{key}.body"
 
@@ -103,19 +108,23 @@ class CacheStore:
         for path in self._paths(key):
             path.unlink(missing_ok=True)
 
-    def total_bytes(self) -> int:
+    def _entry_files(self, suffix: str) -> list[Path]:
+        # cache.directory is user-configurable; never count or evict files the store did not write.
         if not self.directory.is_dir():
-            return 0
-        return sum(p.stat().st_size for p in self.directory.rglob("*") if p.is_file())
+            return []
+        return [
+            path
+            for path in self.directory.glob(f"*/*.{suffix}")
+            if path.is_file() and _KEY.fullmatch(path.stem) and path.parent.name == path.stem[:2]
+        ]
+
+    def total_bytes(self) -> int:
+        files = self._entry_files("body") + self._entry_files("json")
+        return sum(path.stat().st_size for path in files)
 
     def evict_to_limit(self) -> int:
         """Drop least-recently-used entries until the store fits max_bytes."""
-        if not self.directory.is_dir():
-            return 0
-        bodies = sorted(
-            (p for p in self.directory.rglob("*.body") if p.is_file()),
-            key=lambda p: p.stat().st_mtime,
-        )
+        bodies = sorted(self._entry_files("body"), key=lambda p: p.stat().st_mtime)
         total = self.total_bytes()
         removed = 0
         for body_path in bodies:
@@ -129,7 +138,3 @@ class CacheStore:
             self.discard(key)
             removed += 1
         return removed
-
-    def clear(self) -> None:
-        if self.directory.is_dir():
-            shutil.rmtree(self.directory)

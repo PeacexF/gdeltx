@@ -215,3 +215,25 @@ def test_429_without_a_body_falls_back_to_generic_hint(client: HttpClient) -> No
     with pytest.raises(RateLimitError) as excinfo:
         client.get(URL)
     assert "api.min_interval" in (excinfo.value.hint or "")
+
+
+@pytest.mark.parametrize(
+    "url", ["https://example.com/doc", "http://api.gdeltproject.org/api/v2/doc/doc"]
+)
+def test_only_gdelt_over_https_is_contacted(url: str) -> None:
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.get(url).mock(return_value=httpx.Response(200, text="{}"))
+        with pytest.raises(APIError, match="not a GDELT host"):
+            HttpClient(retries=0, reporter=Reporter(quiet=True)).get(url)
+    assert not route.called
+
+
+@respx.mock
+def test_redirects_off_gdelt_are_refused() -> None:
+    respx.get(URL).mock(
+        return_value=httpx.Response(302, headers={"Location": "https://evil.example/x"})
+    )
+    elsewhere = respx.get("https://evil.example/x").mock(return_value=httpx.Response(200))
+    with pytest.raises(APIError, match="not a GDELT host"):
+        HttpClient(retries=0, reporter=Reporter(quiet=True)).get(URL)
+    assert not elsewhere.called
