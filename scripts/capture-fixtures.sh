@@ -43,9 +43,7 @@ want doc_artlist.json \
 want context_artlist.json \
   "$API/context/context?query=OpenAI&mode=artlist&format=json&timespan=24H&maxrecords=10"
 
-# GEO 2.0 — mode is required; timespan caps at 7 days.
-want geo_pointdata.geojson \
-  "$API/geo/geo?query=OpenAI&mode=pointdata&format=geojson&timespan=1d"
+# GEO 2.0 is not captured: the endpoint 404s (API-NOTES §6).
 
 # Bulk file index (redirects to https, hence -L).
 want lastupdate.txt \

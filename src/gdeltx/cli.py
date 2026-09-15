@@ -20,6 +20,7 @@ from gdeltx.cache import CacheStore
 from gdeltx.commands import context as context_cmd
 from gdeltx.commands import entities as entities_cmd
 from gdeltx.commands import events as events_cmd
+from gdeltx.commands import geo as geo_cmd
 from gdeltx.commands import related as related_cmd
 from gdeltx.commands import search as search_cmd
 from gdeltx.commands import sources as sources_cmd
@@ -647,6 +648,52 @@ def events_command(
             end=end,
             max_records=max_records,
             include_raw=include_raw,
+        )
+
+
+@app.command("geo")
+def geo_command(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Argument(help="A name or phrase, matched as plain text.")],
+    since: FileSince = None,
+    until: Until = None,
+    top: Annotated[int, typer.Option("--top", min=1, help="Locations to show.")] = 25,
+    levels: Annotated[
+        list[geo_cmd.Level] | None,
+        typer.Option("--level", case_sensitive=False, help="Only this level. Repeatable."),
+    ] = None,
+    geojson: Annotated[
+        bool, typer.Option("--geojson", help="Write a GeoJSON FeatureCollection.")
+    ] = False,
+    allow_large: AllowLarge = False,
+    fmt: FormatOpt = None,
+    as_json: Json = False,
+    as_jsonl: Jsonl = False,
+    as_csv: Csv = False,
+    no_cache: NoCache = False,
+) -> None:
+    """Places named in GKG coverage of the query, with GDELT's coordinates."""
+    if geojson and (fmt is not None or as_json or as_jsonl or as_csv):
+        raise typer.BadParameter("--geojson conflicts with the other format flags")
+    app_ctx = build_context(
+        ctx, fmt=fmt, as_json=as_json, as_jsonl=as_jsonl, as_csv=as_csv, no_cache=no_cache
+    )
+    term = plain_query(query)
+    start, end = resolve_range(since, until, default=FILE_SPAN)
+    fetcher = app_ctx.fetcher()
+    with fetcher.http:
+        file_plan = app_ctx.plan_files(fetcher, Dataset.GKG, start, end, allow_large=allow_large)
+        geo_cmd.run(
+            term,
+            fetcher=fetcher,
+            file_plan=file_plan,
+            reporter=app_ctx.reporter,
+            fmt=app_ctx.format,
+            start=start,
+            end=end,
+            top=top,
+            levels={str(level) for level in levels} if levels else None,
+            geojson=geojson,
         )
 
 

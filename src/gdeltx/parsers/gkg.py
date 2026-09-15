@@ -58,6 +58,8 @@ NAME_FIELDS = (
 _PAGE_TITLE = re.compile(r"<PAGE_TITLE>(.*?)</PAGE_TITLE>", re.DOTALL)
 
 COUNTRY_LOCATION_TYPE = 1
+# GKG 2.1 codebook: 1 country, 2 US state, 3 US city, 4 world city, 5 world ADM1.
+LOCATION_LEVELS = {1: "country", 2: "state", 3: "city", 4: "city", 5: "state"}
 
 
 @dataclass(frozen=True, slots=True)

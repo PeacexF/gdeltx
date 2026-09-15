@@ -13,7 +13,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from gdeltx.models import Entity, EntityType, Source
+from gdeltx.models import Entity, EntityType, Location, Source
+from gdeltx.parsers.gkg import LOCATION_LEVELS, GkgLocation
 
 
 @dataclass(slots=True)
@@ -82,6 +83,99 @@ class EntityTally:
 
 def _spelling(spellings: Counter[str]) -> str:
     return min(spellings.items(), key=lambda item: (-item[1], item[0]))[0]
+
+
+@dataclass(slots=True)
+class _LocationTally:
+    location: GkgLocation
+    articles: int = 0
+    spellings: Counter[str] = field(default_factory=Counter)
+    coordinates: Counter[tuple[float, float]] = field(default_factory=Counter)
+    domains: set[str] = field(default_factory=set)
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+
+
+class LocationTally:
+    """Places grouped by GDELT's own geocoding, not by spelling.
+
+    GKG resolves "Australian" and "Australia" to the same feature, so they are
+    one location; two places sharing a name in different countries are not.
+    Names without a feature id fall back to case- and space-insensitive name.
+    """
+
+    def __init__(self) -> None:
+        self._places: dict[tuple[object, ...], _LocationTally] = {}
+        self.articles = 0
+
+    def add_article(
+        self,
+        locations: Iterable[GkgLocation],
+        *,
+        domain: str | None,
+        seen_at: datetime | None,
+    ) -> None:
+        self.articles += 1
+        seen: set[tuple[object, ...]] = set()
+        for location in locations:
+            key = _place_key(location)
+            if key in seen:
+                continue
+            seen.add(key)
+            tally = self._places.setdefault(key, _LocationTally(location))
+            tally.articles += 1
+            tally.spellings[" ".join(location.name.split())] += 1
+            if location.latitude is not None and location.longitude is not None:
+                tally.coordinates[(location.latitude, location.longitude)] += 1
+            if domain:
+                tally.domains.add(domain)
+            if seen_at is not None:
+                if tally.first_seen is None or seen_at < tally.first_seen:
+                    tally.first_seen = seen_at
+                if tally.last_seen is None or seen_at > tally.last_seen:
+                    tally.last_seen = seen_at
+
+    def ranked(
+        self, *, query: str, levels: set[str] | None = None, top: int | None = None
+    ) -> list[Location]:
+        locations = []
+        for tally in self._places.values():
+            place = tally.location
+            level = LOCATION_LEVELS.get(place.type or 0, "unknown")
+            if levels is not None and level not in levels:
+                continue
+            coordinates = (
+                min(tally.coordinates.items(), key=lambda item: (-item[1], item[0]))[0]
+                if tally.coordinates
+                else (None, None)
+            )
+            locations.append(
+                Location(
+                    name=_spelling(tally.spellings),
+                    level=level,
+                    location_type=place.type,
+                    country_code=place.country_code,
+                    adm1=place.adm1,
+                    feature_id=place.feature_id,
+                    latitude=coordinates[0],
+                    longitude=coordinates[1],
+                    count=tally.articles,
+                    sources=len(tally.domains),
+                    first_seen=tally.first_seen,
+                    last_seen=tally.last_seen,
+                    query=query,
+                )
+            )
+        locations.sort(
+            key=lambda loc: (-loc.count, loc.name.casefold(), loc.name, loc.feature_id or "")
+        )
+        return locations if top is None else locations[:top]
+
+
+def _place_key(location: GkgLocation) -> tuple[object, ...]:
+    if location.feature_id:
+        return (location.type, location.country_code, location.adm1, location.feature_id)
+    return (location.type, location.country_code, " ".join(location.name.split()).casefold())
 
 
 TOPICS_PER_SOURCE = 5
